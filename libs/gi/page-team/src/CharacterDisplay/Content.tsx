@@ -4,6 +4,7 @@ import { characterAsset } from '@genshin-optimizer/gi/assets'
 import type { CharacterKey, ElementKey } from '@genshin-optimizer/gi/consts'
 import { TeamCharacterContext, useDBMeta } from '@genshin-optimizer/gi/db-ui'
 import { getCharEle } from '@genshin-optimizer/gi/stats'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows' // MyTools
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import PersonIcon from '@mui/icons-material/Person'
 import ScienceIcon from '@mui/icons-material/Science'
@@ -13,6 +14,7 @@ import { Skeleton, Tab, Tabs, useMediaQuery, useTheme } from '@mui/material'
 import { Suspense, useCallback, useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Link as RouterLink, Routes } from 'react-router-dom'
+import TabWeaponCompare from '../MyTools/TabWeaponCompare' // MyTools
 import FormulaModal from './FormulaModal'
 import { LoadoutHeader } from './LoadoutHeader'
 import TabBuild from './Tabs/TabOptimize'
@@ -65,6 +67,8 @@ function CharacterPanel({ isTCBuild }: { isTCBuild: boolean }) {
           <Route path="" element={<TabOverview />} />
         )}
         <Route path="talent" element={<TabTalent />} />
+        {/* MyTools */}
+        <Route path="weapons" element={<TabWeaponCompare />} />
         {!isTCBuild && <Route path="optimize" element={<TabBuild />} />}
 
         {!isTCBuild && <Route path="upopt" element={<TabUpopt />} />}
@@ -201,6 +205,15 @@ function LoadoutTabs({
         icon={<FactCheckIcon />}
         component={RouterLink}
         to="talent"
+      />
+      {/* MyTools */}
+      <Tab
+        iconPosition="start"
+        value="weapons"
+        label="So vũ khí"
+        icon={<CompareArrowsIcon />}
+        component={RouterLink}
+        to="weapons"
       />
       {!isTCBuild && (
         <Tab
