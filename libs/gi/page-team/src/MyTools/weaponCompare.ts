@@ -9,12 +9,7 @@
  * File này chỉ dùng các API công khai của GO nên khi đồng bộ cập nhật từ bản gốc
  * sẽ rất ít khi bị xung đột.
  */
-import {
-  deepClone,
-  evalIfFunc,
-  layeredAssignment,
-  objPathValue,
-} from '@genshin-optimizer/common/util'
+import { layeredAssignment, objPathValue } from '@genshin-optimizer/common/util'
 import type {
   CharacterKey,
   GenderKey,
@@ -29,11 +24,13 @@ import {
   weaponMaxLevel,
 } from '@genshin-optimizer/gi/consts'
 import type { ArtCharDatabase, ICachedWeapon } from '@genshin-optimizer/gi/db'
-import type { DocumentSection } from '@genshin-optimizer/gi/sheets'
-import { getWeaponSheet } from '@genshin-optimizer/gi/sheets'
 import { getCharStat, getWeaponStat } from '@genshin-optimizer/gi/stats'
-import { getTeamDataCalc } from '@genshin-optimizer/gi/ui'
+import { getTeamData, getTeamDataCalc } from '@genshin-optimizer/gi/ui'
 import type { CalcResult, UIData } from '@genshin-optimizer/gi/uidata'
+import { uiDataForTeam } from '@genshin-optimizer/gi/uidata'
+import { constant, type Data } from '@genshin-optimizer/gi/wr'
+import type { WeaponCondDef, WeaponCondValues } from './weaponConditions'
+import { listWeaponConditions } from './weaponConditions'
 
 /** Các vũ khí cùng loại với nhân vật, lọc theo độ hiếm tối thiểu. */
 export function listCandidateWeapons(
@@ -86,6 +83,11 @@ export function readTargetValue(
 /**
  * Tính giá trị mục tiêu khi nhân vật cầm `weapon`.
  * Thánh di vật, team, kẻ địch, buff... lấy y nguyên từ loadout hiện tại.
+ *
+ * `condValues` (tùy chọn): các điều kiện passive của CHÍNH vũ khí đó do bạn chọn
+ * trong tab So vũ khí. Khi có, nó thay thế hoàn toàn điều kiện của vũ khí này
+ * trong dữ liệu nhân vật (các điều kiện khác như kỹ năng, set thánh di vật giữ nguyên).
+ * Khi không có (undefined), dùng điều kiện đang đặt ở tab Tổng quan như bình thường.
  */
 export function evalWithWeapon(
   database: ArtCharDatabase,
@@ -94,85 +96,41 @@ export function evalWithWeapon(
   gender: GenderKey,
   characterKey: CharacterKey,
   weapon: ICachedWeapon | undefined,
-  targetPath: string[]
+  targetPath: string[],
+  condValues?: { conds: WeaponCondDef[]; values: WeaponCondValues }
 ): number | undefined {
-  const teamData = getTeamDataCalc(
-    database,
-    teamId,
-    gender,
-    teamCharId,
-    0,
-    undefined,
-    weapon
-  )
-  return readTargetValue(teamData?.[characterKey]?.target, targetPath)
-}
-
-/**
- * Tìm các điều kiện (passive có stack/kích hoạt) của một vũ khí và trả về
- * trạng thái "tối đa" cho từng điều kiện: [path, stateKey].
- * - Điều kiện loại "exclusive": chọn state cuối cùng (thường là stack cao nhất).
- * - Điều kiện loại "multiple": bật tất cả các state.
- */
-export function maxConditionalsForWeapon(
-  weaponKey: WeaponKey,
-  data: UIData
-): Array<[readonly string[], string]> {
-  const sheet = getWeaponSheet(weaponKey)
-  if (!sheet) return []
-  const result: Array<[readonly string[], string]> = []
-  for (const doc of sheet.document as DocumentSection[]) {
-    if (!('states' in doc) || !doc.states) continue
-    let states: Record<string, { path?: readonly string[] }>
-    try {
-      states = evalIfFunc(doc.states, data) as Record<
-        string,
-        { path?: readonly string[] }
-      >
-    } catch {
-      continue
-    }
-    const stateKeys = Object.keys(states)
-    if (!stateKeys.length) continue
-    if ('path' in doc && doc.path) {
-      result.push([doc.path, stateKeys[stateKeys.length - 1]])
-    } else {
-      for (const sk of stateKeys) {
-        const p = states[sk]?.path
-        if (p) result.push([p, sk])
-      }
-    }
+  if (!weapon || !condValues) {
+    const teamData = getTeamDataCalc(
+      database,
+      teamId,
+      gender,
+      teamCharId,
+      0,
+      undefined,
+      weapon
+    )
+    return readTargetValue(teamData?.[characterKey]?.target, targetPath)
   }
-  return result
-}
 
-/**
- * Ghi điều kiện "tối đa" cho các vũ khí trong danh sách vào teamChar,
- * CHỈ ghi những điều kiện chưa được đặt (không đè lựa chọn bạn đã bật tay).
- * Trả về số điều kiện đã ghi.
- */
-export function applyMaxConditionals(
-  database: ArtCharDatabase,
-  teamCharId: string,
-  weaponKeys: WeaponKey[],
-  data: UIData
-): number {
-  let count = 0
-  database.teamChars.set(teamCharId, (teamChar) => {
-    const conditional = deepClone(teamChar.conditional) as Record<
-      string,
-      unknown
-    >
-    for (const wk of weaponKeys) {
-      for (const [path, state] of maxConditionalsForWeapon(wk, data)) {
-        if (objPathValue(conditional, path as string[]) !== undefined) continue
-        layeredAssignment(conditional, path as string[], state)
-        count++
-      }
-    }
-    teamChar.conditional = conditional as typeof teamChar.conditional
-  })
-  return count
+  // Dựng dữ liệu team như GO, rồi thay điều kiện của vũ khí này bằng lựa chọn của bạn
+  const activeChar = database.teams.getActiveTeamChar(teamId)
+  const bundle = getTeamData(database, teamId, teamCharId, 0, undefined, weapon)
+  if (!activeChar || !bundle?.teamData) return undefined
+  const charData = bundle.teamData[characterKey] as Data[] | undefined
+  if (!charData) return undefined
+  // Bỏ điều kiện cũ của vũ khí này (nếu có) để không bị trùng khi gộp dữ liệu
+  for (const d of charData) {
+    const cond = d.conditional as Record<string, unknown> | undefined
+    if (cond && weapon.key in cond) delete cond[weapon.key]
+  }
+  const layer: Data = { conditional: {} }
+  for (const c of condValues.conds) {
+    const v = condValues.values[c.id]
+    if (v) layeredAssignment(layer, ['conditional', ...c.path], constant(v))
+  }
+  charData.unshift(layer)
+  const calc = uiDataForTeam(bundle.teamData, gender, activeChar.key)
+  return readTargetValue(calc[characterKey]?.target, targetPath)
 }
 
 export type WeaponCompareRow = {
@@ -210,6 +168,8 @@ export async function runWeaponCompare(opts: {
   refinements: RefinementKey[]
   targetPath: string[]
   data: UIData
+  /** Điều kiện passive bạn đã chọn cho từng vũ khí (xem weaponConditions.ts) */
+  overrides: Partial<Record<WeaponKey, WeaponCondValues>>
   onProgress?: (done: number, total: number) => void
   isCancelled?: () => boolean
 }): Promise<WeaponCompareRow[]> {
@@ -221,6 +181,9 @@ export async function runWeaponCompare(opts: {
     // Vũ khí 1-2★ không có tinh luyện nên chỉ tính 1 lần
     const hasRefinement = getWeaponStat(wk).rarity > 2
     const refs = hasRefinement ? opts.refinements : [1 as RefinementKey]
+    const conds = listWeaponConditions(wk, opts.data)
+    const chosen = opts.overrides[wk]
+    const condValues = chosen ? { conds, values: chosen } : undefined
     const values: WeaponCompareRow['values'] = {}
     for (const r of refs) {
       const weapon = makeVirtualWeapon(wk, opts.characterKey, r)
@@ -232,7 +195,8 @@ export async function runWeaponCompare(opts: {
           opts.gender,
           opts.characterKey,
           weapon,
-          opts.targetPath
+          opts.targetPath,
+          condValues
         )
       } catch (e) {
         console.error(`[MyTools] Lỗi khi tính vũ khí ${wk} R${r}`, e)
@@ -246,7 +210,7 @@ export async function runWeaponCompare(opts: {
       values,
       refinement: top,
       value: values[top],
-      hasConditional: maxConditionalsForWeapon(wk, opts.data).length > 0,
+      hasConditional: conds.length > 0,
       isEquipped: wk === opts.equippedWeaponKey,
     })
     opts.onProgress?.(i + 1, total)

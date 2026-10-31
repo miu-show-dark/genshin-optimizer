@@ -22,8 +22,14 @@ import {
   Box,
   Button,
   CardContent,
+  Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
+  FormControlLabel,
   InputLabel,
   LinearProgress,
   MenuItem,
@@ -37,16 +43,28 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import type { ReactNode } from 'react'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatPct, formatValue } from './format'
 import type { WeaponCompareRow } from './weaponCompare'
 import {
-  applyMaxConditionals,
   evalWithWeapon,
   listCandidateWeapons,
   runWeaponCompare,
 } from './weaponCompare'
+import type {
+  WeaponCondDef,
+  WeaponCondOverrides,
+  WeaponCondValues,
+} from './weaponConditions'
+import {
+  listWeaponConditions,
+  loadWeaponCondOverrides,
+  maxValuesFor,
+  saveWeaponCondOverrides,
+  valuesFromCharConditional,
+} from './weaponConditions'
 
 type TargetOption = { id: string; label: string; path: string[] }
 
@@ -65,8 +83,9 @@ const refsOf = (mode: RefMode): RefinementKey[] =>
 
 const MAX_COND_HELP =
   'Nhiều passive vũ khí chỉ hoạt động khi một điều kiện đang bật (ví dụ: đủ 5 stack, vừa dùng kỹ năng). ' +
-  'Nút này bật sẵn điều kiện ở mức cao nhất cho các vũ khí trong danh sách để so sánh công bằng (coi như buff luôn đầy). ' +
-  'Điều kiện bạn đã tự đặt cho một vũ khí sẽ được giữ nguyên, vũ khí đang cầm không bị đổi.'
+  'Nút này bật điều kiện ở mức cao nhất cho các vũ khí chưa được bạn chỉnh (coi như buff luôn đầy), giữ nguyên điều kiện nào đã đặt sẵn ở dữ liệu nhân vật. ' +
+  'Muốn chỉnh riêng từng vũ khí, bấm vào nhãn "Điều kiện" ở cuối mỗi dòng. ' +
+  'Các lựa chọn này chỉ dùng cho bảng so sánh, không đổi dữ liệu nhân vật của bạn.'
 
 export default function TabWeaponCompare() {
   const { t } = useTranslation(['weaponNames_gen'])
@@ -121,6 +140,47 @@ export default function TabWeaponCompare() {
   const [progress, setProgress] = useState<[number, number] | undefined>()
   const [currentValue, setCurrentValue] = useState<number | undefined>()
   const [notice, setNotice] = useState('')
+
+  // ---- Điều kiện passive của từng vũ khí (lưu trong trình duyệt, không ghi vào database GO) ----
+  const [overrides, setOverrides] = useState<WeaponCondOverrides>(() =>
+    loadWeaponCondOverrides(teamCharId)
+  )
+  useEffect(
+    () => setOverrides(loadWeaponCondOverrides(teamCharId)),
+    [teamCharId]
+  )
+  const updateOverrides = (next: WeaponCondOverrides) => {
+    setOverrides(next)
+    saveWeaponCondOverrides(teamCharId, next)
+  }
+  const [condWeapon, setCondWeapon] = useState<WeaponKey | undefined>()
+  /** Giá trị điều kiện đang có hiệu lực của một vũ khí: lựa chọn của bạn, hoặc điều kiện đang đặt trong dữ liệu nhân vật (tab Tổng quan) nếu bạn chưa chỉnh */
+  const effectiveValues = (wk: WeaponKey, conds: WeaponCondDef[]) =>
+    overrides[wk] ?? valuesFromCharConditional(conds, teamChar.conditional)
+  const activeCount = (wk: WeaponKey) => {
+    const conds = listWeaponConditions(wk, data)
+    const values = effectiveValues(wk, conds)
+    return {
+      total: conds.length,
+      active: conds.filter((c) => values[c.id]).length,
+    }
+  }
+  const setCond = (
+    wk: WeaponKey,
+    condId: string,
+    value: string | undefined
+  ) => {
+    const conds = listWeaponConditions(wk, data)
+    const next: WeaponCondValues = { ...effectiveValues(wk, conds) }
+    if (value) next[condId] = value
+    else delete next[condId]
+    updateOverrides({ ...overrides, [wk]: next })
+  }
+  const resetWeapon = (wk: WeaponKey) => {
+    const next = { ...overrides }
+    delete next[wk]
+    updateOverrides(next)
+  }
   const cancelRef = useRef(false)
   useEffect(
     () => () => {
@@ -157,6 +217,7 @@ export default function TabWeaponCompare() {
       refinements: selectedRefs,
       targetPath: target.path,
       data,
+      overrides,
       onProgress: (done, total) => setProgress([done, total]),
       isCancelled: () => cancelRef.current,
     })
@@ -168,12 +229,45 @@ export default function TabWeaponCompare() {
   }
 
   const onMaxConditionals = () => {
-    const others = candidateKeys.filter((wk) => wk !== equippedWeapon.key)
-    const n = applyMaxConditionals(database, teamCharId, others, data)
+    const next: WeaponCondOverrides = { ...overrides }
+    let weapons = 0
+    for (const wk of candidateKeys) {
+      if (wk === equippedWeapon.key || next[wk]) continue
+      const conds = listWeaponConditions(wk, data)
+      if (!conds.length) continue
+      // Mức cao nhất cho điều kiện chưa đặt; điều kiện đã đặt sẵn ở dữ liệu nhân vật được giữ nguyên
+      next[wk] = {
+        ...maxValuesFor(conds),
+        ...valuesFromCharConditional(conds, teamChar.conditional),
+      }
+      weapons++
+    }
+    updateOverrides(next)
     setNotice(
-      n
-        ? `Đã bật ${n} điều kiện ở mức tối đa cho các vũ khí chưa được bạn chỉnh. Bấm "Chạy so sánh" lại để cập nhật.`
-        : 'Không có điều kiện nào cần bật thêm (các vũ khí đã được đặt điều kiện từ trước).'
+      weapons
+        ? `Đã bật điều kiện ở mức cao nhất cho ${weapons} vũ khí chưa được bạn chỉnh. Bấm "Chạy so sánh" lại để cập nhật.`
+        : 'Không có vũ khí nào cần bật thêm (các vũ khí có điều kiện đều đã được bạn chỉnh).'
+    )
+  }
+
+  const onClearConditions = () => {
+    updateOverrides({})
+    setNotice(
+      'Đã xóa mọi lựa chọn điều kiện. Các vũ khí quay về dùng điều kiện đang đặt trong dữ liệu nhân vật (tab Tổng quan).'
+    )
+  }
+
+  const renderCondChip = (row: WeaponCompareRow) => {
+    if (!row.hasConditional) return null
+    const { active, total } = activeCount(row.weaponKey)
+    return (
+      <Chip
+        size="small"
+        variant={active ? 'filled' : 'outlined'}
+        color={active ? 'primary' : 'default'}
+        label={`Điều kiện ${active}/${total}`}
+        onClick={() => setCondWeapon(row.weaponKey)}
+      />
     )
   }
 
@@ -258,6 +352,13 @@ export default function TabWeaponCompare() {
               </Button>
             </span>
           </Tooltip>
+          <Button
+            color="secondary"
+            onClick={onClearConditions}
+            disabled={running}
+          >
+            Xóa lựa chọn điều kiện
+          </Button>
           <Button onClick={onRun} disabled={!target || running}>
             Chạy so sánh ({candidateKeys.length} vũ khí
             {selectedRefs.length > 1 ? ` × ${selectedRefs.length} mốc` : ''})
@@ -294,6 +395,7 @@ export default function TabWeaponCompare() {
                 refs={shownRefs}
                 best={best}
                 nameOf={(wk) => t(`weaponNames_gen:${wk}`)}
+                renderCondChip={renderCondChip}
               />
             ) : (
               <Table size="small">
@@ -316,12 +418,29 @@ export default function TabWeaponCompare() {
                       name={t(`weaponNames_gen:${row.weaponKey}`)}
                       best={rows[0]?.value}
                       current={currentValue}
+                      condChip={renderCondChip(row)}
                     />
                   ))}
                 </TableBody>
               </Table>
             )}
           </Box>
+        )}
+        {condWeapon && (
+          <WeaponCondDialog
+            weaponKey={condWeapon}
+            name={t(`weaponNames_gen:${condWeapon}`)}
+            conds={listWeaponConditions(condWeapon, data)}
+            values={effectiveValues(
+              condWeapon,
+              listWeaponConditions(condWeapon, data)
+            )}
+            isEquipped={condWeapon === equippedWeapon.key}
+            hasOverride={!!overrides[condWeapon]}
+            onChange={(id, v) => setCond(condWeapon, id, v)}
+            onReset={() => resetWeapon(condWeapon)}
+            onClose={() => setCondWeapon(undefined)}
+          />
         )}
       </CardContent>
     </CardThemed>
@@ -334,12 +453,14 @@ function WeaponRow({
   name,
   best,
   current,
+  condChip,
 }: {
   rank: number
   row: WeaponCompareRow
   name: string
   best: number | undefined
   current: number | undefined
+  condChip: ReactNode
 }) {
   return (
     <TableRow
@@ -369,9 +490,7 @@ function WeaponRow({
           {row.isEquipped && (
             <Chip size="small" color="success" label="Đang cầm" />
           )}
-          {row.hasConditional && (
-            <Chip size="small" variant="outlined" label="Có điều kiện" />
-          )}
+          {condChip}
         </Box>
       </TableCell>
     </TableRow>
@@ -383,11 +502,13 @@ function MultiRefTable({
   refs,
   best,
   nameOf,
+  renderCondChip,
 }: {
   rows: WeaponCompareRow[]
   refs: RefinementKey[]
   best: number
   nameOf: (wk: WeaponKey) => string
+  renderCondChip: (row: WeaponCompareRow) => ReactNode
 }) {
   const first = refs[0]
   const last = refs[refs.length - 1]
@@ -468,13 +589,7 @@ function MultiRefTable({
                   {row.isEquipped && (
                     <Chip size="small" color="success" label="Đang cầm" />
                   )}
-                  {row.hasConditional && (
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label="Có điều kiện"
-                    />
-                  )}
+                  {renderCondChip(row)}
                 </Box>
               </TableCell>
             </TableRow>
@@ -482,5 +597,93 @@ function MultiRefTable({
         })}
       </TableBody>
     </Table>
+  )
+}
+
+function WeaponCondDialog({
+  weaponKey,
+  name,
+  conds,
+  values,
+  isEquipped,
+  hasOverride,
+  onChange,
+  onReset,
+  onClose,
+}: {
+  weaponKey: WeaponKey
+  name: string
+  conds: WeaponCondDef[]
+  values: WeaponCondValues
+  isEquipped: boolean
+  hasOverride: boolean
+  onChange: (condId: string, value: string | undefined) => void
+  onReset: () => void
+  onClose: () => void
+}) {
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <ImgIcon size={2} src={weaponAsset(weaponKey, true)} />
+        {name} – điều kiện passive
+      </DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Alert severity="info">
+          {isEquipped ? 'Đây là vũ khí đang cầm. ' : ''}
+          Các ô bên dưới lấy sẵn từ điều kiện đang đặt trong dữ liệu nhân vật
+          (tab Tổng quan). Lựa chọn của bạn chỉ dùng cho bảng so sánh, không đổi
+          dữ liệu nhân vật. Sau khi chỉnh, bấm "Chạy so sánh" lại để cập nhật
+          số.
+        </Alert>
+        {conds.map((c) =>
+          c.options.length === 1 ? (
+            <FormControlLabel
+              key={c.id}
+              control={
+                <Checkbox
+                  checked={values[c.id] === c.options[0].value}
+                  onChange={(e) =>
+                    onChange(
+                      c.id,
+                      e.target.checked ? c.options[0].value : undefined
+                    )
+                  }
+                />
+              }
+              label={c.label}
+            />
+          ) : (
+            <Box
+              key={c.id}
+              sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
+            >
+              <Box sx={{ flexGrow: 1 }}>{c.label}</Box>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <Select
+                  displayEmpty
+                  value={values[c.id] ?? ''}
+                  onChange={(e) => onChange(c.id, e.target.value || undefined)}
+                >
+                  <MenuItem value="">
+                    <em>Tắt</em>
+                  </MenuItem>
+                  {c.options.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>
+                      {o.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          )
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button color="secondary" disabled={!hasOverride} onClick={onReset}>
+          Bỏ lựa chọn
+        </Button>
+        <Button onClick={onClose}>Xong</Button>
+      </DialogActions>
+    </Dialog>
   )
 }
