@@ -34,6 +34,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
@@ -48,6 +49,24 @@ import {
 } from './weaponCompare'
 
 type TargetOption = { id: string; label: string; path: string[] }
+
+type RefMode = 'all' | '1' | '2' | '3' | '4' | '5'
+type RarityMode = 'min3' | 'min4' | 'only4' | 'only5'
+
+const rarityRange: Record<RarityMode, [RarityKey, RarityKey]> = {
+  min3: [3, 5],
+  min4: [4, 5],
+  only4: [4, 4],
+  only5: [5, 5],
+}
+
+const refsOf = (mode: RefMode): RefinementKey[] =>
+  mode === 'all' ? [1, 2, 3, 4, 5] : [Number(mode) as RefinementKey]
+
+const MAX_COND_HELP =
+  'Nhiều passive vũ khí chỉ hoạt động khi một điều kiện đang bật (ví dụ: đủ 5 stack, vừa dùng kỹ năng). ' +
+  'Nút này bật sẵn điều kiện ở mức cao nhất cho các vũ khí trong danh sách để so sánh công bằng (coi như buff luôn đầy). ' +
+  'Điều kiện bạn đã tự đặt cho một vũ khí sẽ được giữ nguyên, vũ khí đang cầm không bị đổi.'
 
 export default function TabWeaponCompare() {
   const { t } = useTranslation(['weaponNames_gen'])
@@ -85,17 +104,20 @@ export default function TabWeaponCompare() {
   }, [targetOptions, targetId])
   const target = targetOptions.find((o) => o.id === targetId)
 
-  const [refinement, setRefinement] = useState<RefinementKey>(1)
-  const [minRarity, setMinRarity] = useState<RarityKey>(4)
+  const [refMode, setRefMode] = useState<RefMode>('1')
+  const [rarityMode, setRarityMode] = useState<RarityMode>('min4')
 
   const equippedWeapon = database.teams.getLoadoutWeapon(loadoutDatum)
-  const candidateKeys = useMemo(
-    () => listCandidateWeapons(characterKey, minRarity),
-    [characterKey, minRarity]
-  )
+  const candidateKeys = useMemo(() => {
+    const [min, max] = rarityRange[rarityMode]
+    return listCandidateWeapons(characterKey, min, max)
+  }, [characterKey, rarityMode])
+  const selectedRefs = refsOf(refMode)
 
   // ---- Chạy so sánh ----
   const [rows, setRows] = useState<WeaponCompareRow[]>([])
+  // Các mốc tinh luyện của kết quả đang hiển thị (không đổi khi bạn chỉnh ô chọn sau khi chạy)
+  const [shownRefs, setShownRefs] = useState<RefinementKey[]>([1])
   const [progress, setProgress] = useState<[number, number] | undefined>()
   const [currentValue, setCurrentValue] = useState<number | undefined>()
   const [notice, setNotice] = useState('')
@@ -132,13 +154,16 @@ export default function TabWeaponCompare() {
       characterKey,
       equippedWeaponKey: equippedWeapon.key,
       weaponKeys: candidateKeys,
-      refinement,
+      refinements: selectedRefs,
       targetPath: target.path,
       data,
       onProgress: (done, total) => setProgress([done, total]),
       isCancelled: () => cancelRef.current,
     })
-    if (!cancelRef.current) setRows(result)
+    if (!cancelRef.current) {
+      setRows(result)
+      setShownRefs(selectedRefs)
+    }
     setProgress(undefined)
   }
 
@@ -152,7 +177,10 @@ export default function TabWeaponCompare() {
     )
   }
 
-  const best = rows[0]?.value
+  const best = rows.reduce(
+    (m, r) => Math.max(m, ...Object.values(r.values).map((v) => v ?? 0)),
+    0
+  )
   const running = !!progress
 
   return (
@@ -162,8 +190,9 @@ export default function TabWeaponCompare() {
         <Alert severity="info">
           Mỗi vũ khí được giả lập ở cấp tối đa với tinh luyện bạn chọn. Thánh di
           vật, đồng đội, buff và kẻ địch giữ nguyên như loadout hiện tại.
-          Passive có điều kiện chỉ được tính nếu đã bật cho vũ khí đó, dùng nút
-          "Bật điều kiện tối đa" để bật nhanh. Vì thánh di vật không được tối ưu
+          Passive có điều kiện (stack, sau khi dùng kỹ năng...) chỉ được tính
+          nếu đã bật cho vũ khí đó; nút "Bật điều kiện tối đa" sẽ bật giúp bạn
+          (rê chuột vào nút để xem chi tiết). Vì thánh di vật không được tối ưu
           lại theo từng vũ khí, hãy coi đây là so sánh nhanh; muốn chính xác hơn
           thì chạy Optimize với vài vũ khí đứng đầu.
         </Alert>
@@ -190,47 +219,48 @@ export default function TabWeaponCompare() {
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 120 }}>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
             <InputLabel>Tinh luyện</InputLabel>
             <Select
               label="Tinh luyện"
-              value={refinement}
-              onChange={(e) =>
-                setRefinement(Number(e.target.value) as RefinementKey)
-              }
+              value={refMode}
+              onChange={(e) => setRefMode(e.target.value as RefMode)}
             >
+              <MenuItem value="all">Tất cả R1 → R5</MenuItem>
               {[1, 2, 3, 4, 5].map((r) => (
-                <MenuItem key={r} value={r}>
+                <MenuItem key={r} value={`${r}`}>
                   R{r}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Độ hiếm từ</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Độ hiếm</InputLabel>
             <Select
-              label="Độ hiếm từ"
-              value={minRarity}
-              onChange={(e) =>
-                setMinRarity(Number(e.target.value) as RarityKey)
-              }
+              label="Độ hiếm"
+              value={rarityMode}
+              onChange={(e) => setRarityMode(e.target.value as RarityMode)}
             >
-              {[3, 4, 5].map((r) => (
-                <MenuItem key={r} value={r}>
-                  {r}★ trở lên
-                </MenuItem>
-              ))}
+              <MenuItem value="min3">3★ trở lên</MenuItem>
+              <MenuItem value="min4">4★ trở lên</MenuItem>
+              <MenuItem value="only4">Chỉ 4★</MenuItem>
+              <MenuItem value="only5">Chỉ 5★</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            color="secondary"
-            onClick={onMaxConditionals}
-            disabled={running}
-          >
-            Bật điều kiện tối đa
-          </Button>
+          <Tooltip title={MAX_COND_HELP}>
+            <span>
+              <Button
+                color="secondary"
+                onClick={onMaxConditionals}
+                disabled={running}
+              >
+                Bật điều kiện tối đa
+              </Button>
+            </span>
+          </Tooltip>
           <Button onClick={onRun} disabled={!target || running}>
-            Chạy so sánh ({candidateKeys.length} vũ khí)
+            Chạy so sánh ({candidateKeys.length} vũ khí
+            {selectedRefs.length > 1 ? ` × ${selectedRefs.length} mốc` : ''})
           </Button>
           {running && (
             <Button color="error" onClick={() => (cancelRef.current = true)}>
@@ -258,30 +288,39 @@ export default function TabWeaponCompare() {
 
         {!!rows.length && (
           <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>#</TableCell>
-                  <TableCell>Vũ khí</TableCell>
-                  <TableCell align="right">Giá trị</TableCell>
-                  <TableCell align="right">So với hạng 1</TableCell>
-                  <TableCell align="right">So với đang cầm</TableCell>
-                  <TableCell>Ghi chú</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row, i) => (
-                  <WeaponRow
-                    key={row.weaponKey}
-                    rank={i + 1}
-                    row={row}
-                    name={t(`weaponNames_gen:${row.weaponKey}`)}
-                    best={best}
-                    current={currentValue}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+            {shownRefs.length > 1 ? (
+              <MultiRefTable
+                rows={rows}
+                refs={shownRefs}
+                best={best}
+                nameOf={(wk) => t(`weaponNames_gen:${wk}`)}
+              />
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>#</TableCell>
+                    <TableCell>Vũ khí</TableCell>
+                    <TableCell align="right">Giá trị</TableCell>
+                    <TableCell align="right">So với hạng 1</TableCell>
+                    <TableCell align="right">So với đang cầm</TableCell>
+                    <TableCell>Ghi chú</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rows.map((row, i) => (
+                    <WeaponRow
+                      key={row.weaponKey}
+                      rank={i + 1}
+                      row={row}
+                      name={t(`weaponNames_gen:${row.weaponKey}`)}
+                      best={rows[0]?.value}
+                      current={currentValue}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </Box>
         )}
       </CardContent>
@@ -336,5 +375,112 @@ function WeaponRow({
         </Box>
       </TableCell>
     </TableRow>
+  )
+}
+
+function MultiRefTable({
+  rows,
+  refs,
+  best,
+  nameOf,
+}: {
+  rows: WeaponCompareRow[]
+  refs: RefinementKey[]
+  best: number
+  nameOf: (wk: WeaponKey) => string
+}) {
+  const first = refs[0]
+  const last = refs[refs.length - 1]
+  return (
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell>#</TableCell>
+          <TableCell>Vũ khí</TableCell>
+          {refs.map((r) => (
+            <TableCell key={r} align="right">
+              R{r}
+            </TableCell>
+          ))}
+          <TableCell align="right">
+            R{last} so với R{first}
+          </TableCell>
+          <TableCell>Ghi chú</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {rows.map((row, i) => {
+          const gain =
+            row.values[first] && row.values[last]
+              ? (row.values[last]! / row.values[first]! - 1) * 100
+              : undefined
+          return (
+            <TableRow
+              key={row.weaponKey}
+              sx={
+                row.isEquipped
+                  ? { bgcolor: 'rgba(255,255,255,0.06)' }
+                  : undefined
+              }
+            >
+              <TableCell>{i + 1}</TableCell>
+              <TableCell>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ImgIcon size={2} src={weaponAsset(row.weaponKey, true)} />
+                  <span>
+                    {nameOf(row.weaponKey)}{' '}
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      color="warning.main"
+                    >
+                      {'★'.repeat(row.rarity)}
+                    </Typography>
+                  </span>
+                </Box>
+              </TableCell>
+              {refs.map((r) => {
+                const v = row.values[r]
+                return (
+                  <TableCell key={r} align="right">
+                    {row.refinements.includes(r) ? (
+                      <>
+                        {formatValue(v)}
+                        <Typography
+                          component="div"
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          {formatPct(v, best)}
+                        </Typography>
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </TableCell>
+                )
+              })}
+              <TableCell align="right">
+                {gain === undefined ? '—' : `+${gain.toFixed(1)}%`}
+              </TableCell>
+              <TableCell>
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                  {row.isEquipped && (
+                    <Chip size="small" color="success" label="Đang cầm" />
+                  )}
+                  {row.hasConditional && (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label="Có điều kiện"
+                    />
+                  )}
+                </Box>
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
   )
 }

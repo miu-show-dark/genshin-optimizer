@@ -38,12 +38,18 @@ import type { CalcResult, UIData } from '@genshin-optimizer/gi/uidata'
 /** Các vũ khí cùng loại với nhân vật, lọc theo độ hiếm tối thiểu. */
 export function listCandidateWeapons(
   characterKey: CharacterKey,
-  minRarity: RarityKey = 4
+  minRarity: RarityKey = 4,
+  maxRarity: RarityKey = 5
 ): WeaponKey[] {
   const { weaponType } = getCharStat(characterKey)
   return allWeaponKeys.filter((wk) => {
     const stat = getWeaponStat(wk)
-    return stat && stat.weaponType === weaponType && stat.rarity >= minRarity
+    return (
+      stat &&
+      stat.weaponType === weaponType &&
+      stat.rarity >= minRarity &&
+      stat.rarity <= maxRarity
+    )
   })
 }
 
@@ -172,7 +178,13 @@ export function applyMaxConditionals(
 export type WeaponCompareRow = {
   weaponKey: WeaponKey
   rarity: number
+  /** Các mốc tinh luyện đã tính (vũ khí 1-2★ chỉ có R1) */
+  refinements: RefinementKey[]
+  /** Giá trị theo từng mốc tinh luyện */
+  values: Partial<Record<RefinementKey, number | undefined>>
+  /** Mốc tinh luyện cao nhất đã tính, dùng để xếp hạng */
   refinement: RefinementKey
+  /** Giá trị ở mốc tinh luyện cao nhất, dùng để xếp hạng */
   value: number | undefined
   hasConditional: boolean
   isEquipped: boolean
@@ -182,8 +194,9 @@ export type WeaponCompareRow = {
 const yieldToBrowser = () => new Promise<void>((r) => setTimeout(r, 0))
 
 /**
- * Chạy so sánh cho cả danh sách vũ khí. Tính từng cái một và nhường luồng
- * để trang không bị đơ; `onProgress` báo tiến độ, `isCancelled` cho phép dừng.
+ * Chạy so sánh cho cả danh sách vũ khí, ở một hoặc nhiều mốc tinh luyện.
+ * Tính từng cái một và nhường luồng để trang không bị đơ;
+ * `onProgress` báo tiến độ, `isCancelled` cho phép dừng.
  */
 export async function runWeaponCompare(opts: {
   database: ArtCharDatabase
@@ -193,7 +206,8 @@ export async function runWeaponCompare(opts: {
   characterKey: CharacterKey
   equippedWeaponKey: WeaponKey | undefined
   weaponKeys: WeaponKey[]
-  refinement: RefinementKey
+  /** Các mốc tinh luyện cần tính, ví dụ [1,2,3,4,5] hoặc [3] */
+  refinements: RefinementKey[]
   targetPath: string[]
   data: UIData
   onProgress?: (done: number, total: number) => void
@@ -204,26 +218,34 @@ export async function runWeaponCompare(opts: {
   for (let i = 0; i < total; i++) {
     if (opts.isCancelled?.()) break
     const wk = opts.weaponKeys[i]
-    const weapon = makeVirtualWeapon(wk, opts.characterKey, opts.refinement)
-    let value: number | undefined
-    try {
-      value = evalWithWeapon(
-        opts.database,
-        opts.teamId,
-        opts.teamCharId,
-        opts.gender,
-        opts.characterKey,
-        weapon,
-        opts.targetPath
-      )
-    } catch (e) {
-      console.error(`[MyTools] Lỗi khi tính vũ khí ${wk}`, e)
+    // Vũ khí 1-2★ không có tinh luyện nên chỉ tính 1 lần
+    const hasRefinement = getWeaponStat(wk).rarity > 2
+    const refs = hasRefinement ? opts.refinements : [1 as RefinementKey]
+    const values: WeaponCompareRow['values'] = {}
+    for (const r of refs) {
+      const weapon = makeVirtualWeapon(wk, opts.characterKey, r)
+      try {
+        values[r] = evalWithWeapon(
+          opts.database,
+          opts.teamId,
+          opts.teamCharId,
+          opts.gender,
+          opts.characterKey,
+          weapon,
+          opts.targetPath
+        )
+      } catch (e) {
+        console.error(`[MyTools] Lỗi khi tính vũ khí ${wk} R${r}`, e)
+      }
     }
+    const top = refs[refs.length - 1]
     rows.push({
       weaponKey: wk,
       rarity: getWeaponStat(wk).rarity,
-      refinement: weapon.refinement,
-      value,
+      refinements: refs,
+      values,
+      refinement: top,
+      value: values[top],
       hasConditional: maxConditionalsForWeapon(wk, opts.data).length > 0,
       isEquipped: wk === opts.equippedWeaponKey,
     })
