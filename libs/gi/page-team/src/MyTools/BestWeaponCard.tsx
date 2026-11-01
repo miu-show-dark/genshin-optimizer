@@ -6,7 +6,9 @@
 
 import { useDataManagerValues } from '@genshin-optimizer/common/database-ui'
 import { CardThemed, ImgIcon } from '@genshin-optimizer/common/ui'
+import { objKeyMap } from '@genshin-optimizer/common/util'
 import { weaponAsset } from '@genshin-optimizer/gi/assets'
+import { allArtifactSlotKeys } from '@genshin-optimizer/gi/consts'
 import type { ICachedArtifact, OptConfig } from '@genshin-optimizer/gi/db'
 import {
   TeamCharacterContext,
@@ -74,6 +76,26 @@ export default function BestWeaponCard({
     [allWeapons, weaponType]
   )
 
+  // Đưa kết quả vào danh sách build của GO (hiện đủ vũ khí + 5 thánh di vật,
+  // có nút Equip to Current Build) thay vì chỉ hiện bảng xếp hạng.
+  const publishBuilds = (sorted: BestWeaponRow[]) => {
+    const builds = sorted
+      .filter((r) => r.value !== undefined)
+      .slice(0, optConfig.maxBuildsToShow)
+      .map((r) => ({
+        weaponId: r.weaponId,
+        artifactIds: objKeyMap(
+          allArtifactSlotKeys,
+          (slot) => r.artifactIds[slot]
+        ),
+      }))
+    if (builds.length)
+      database.optConfigs.newOrSetGeneratedBuildList(teamChar.optConfigId, {
+        builds,
+        buildDate: Date.now(),
+      })
+  }
+
   const canRun = !!optConfig.optimizationTarget?.length && !disabled
 
   const run = async () => {
@@ -101,13 +123,18 @@ export default function BestWeaponCard({
         },
         onProgress: setProgress,
         onRow: (row) =>
-          setRows((r) =>
-            [...r, row].sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
-          ),
+          setRows((r) => {
+            const next = [...r, row].sort(
+              (a, b) => (b.value ?? -1) - (a.value ?? -1)
+            )
+            publishBuilds(next)
+            return next
+          }),
         registerCancel: (c) => (cancelSolver.current = c),
         isCancelled: () => cancelled.current,
       })
       setRows(result)
+      publishBuilds(result)
     } finally {
       setRunning(false)
       setProgress(undefined)
@@ -130,8 +157,10 @@ export default function BestWeaponCard({
         <Typography variant="caption" color="text.secondary">
           Thử TỪNG vũ khí bạn đang có trong kho (đúng cấp, tinh luyện thật), mỗi
           cái chạy tối ưu thánh di vật đầy đủ theo mục tiêu, bộ lọc và kho thánh
-          di vật ở trên, rồi xếp hạng. Vũ khí đang cầm là mốc so sánh. Điều kiện
-          passive lấy từ tab So vũ khí (nếu bạn đã chọn).
+          di vật ở trên, rồi xếp hạng. Kết quả hiện ngay ở danh sách build bên
+          dưới (đủ vũ khí + 5 thánh di vật, có nút Equip to Current Build). Vũ
+          khí đang cầm là mốc so sánh. Điều kiện passive lấy từ tab So vũ khí
+          (nếu bạn đã chọn).
         </Typography>
         <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
           <Button
