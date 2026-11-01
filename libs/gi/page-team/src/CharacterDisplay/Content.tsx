@@ -14,7 +14,6 @@ import { Skeleton, Tab, Tabs, useMediaQuery, useTheme } from '@mui/material'
 import { Suspense, useCallback, useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Link as RouterLink, Routes } from 'react-router-dom'
-import TabGcsim from '../MyTools/TabGcsim' // MyTools
 import TabWeaponCompare from '../MyTools/TabWeaponCompare' // MyTools
 import FormulaModal from './FormulaModal'
 import { LoadoutHeader } from './LoadoutHeader'
@@ -70,7 +69,6 @@ function CharacterPanel({ isTCBuild }: { isTCBuild: boolean }) {
         <Route path="talent" element={<TabTalent />} />
         {/* MyTools */}
         <Route path="weapons" element={<TabWeaponCompare />} />
-        <Route path="gcsim" element={<TabGcsim />} />
         {!isTCBuild && <Route path="optimize" element={<TabBuild />} />}
 
         {!isTCBuild && <Route path="upopt" element={<TabUpopt />} />}
@@ -216,14 +214,6 @@ function LoadoutTabs({
         icon={<CompareArrowsIcon />}
         component={RouterLink}
         to="weapons"
-      />
-      <Tab
-        iconPosition="start"
-        value="gcsim"
-        label="gcsim"
-        icon={<CompareArrowsIcon />}
-        component={RouterLink}
-        to="gcsim"
       />
       {!isTCBuild && (
         <Tab

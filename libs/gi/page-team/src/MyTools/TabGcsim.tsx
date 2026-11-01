@@ -1,8 +1,8 @@
 /**
- * MyTools – Tab "gcsim": tạo script gcsim từ đội hiện tại + rotation ghi tắt.
+ * MyTools – Tab "DPS check": tạo script gcsim từ đội hiện tại + rotation ghi tắt.
  */
 import { CardThemed } from '@genshin-optimizer/common/ui'
-import { TeamCharacterContext, useDatabase } from '@genshin-optimizer/gi/db-ui'
+import { useDatabase } from '@genshin-optimizer/gi/db-ui'
 import {
   Alert,
   Box,
@@ -13,7 +13,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useContext, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { buildGcsimScript } from './gcsimExport'
 
 const storeKey = (teamId: string) => `mytools_gcsim_rotation_${teamId}`
@@ -25,9 +25,8 @@ const load = (teamId: string) => {
   }
 }
 
-export default function TabGcsim() {
+export default function TabGcsim({ teamId }: { teamId: string }) {
   const database = useDatabase()
-  const { teamId } = useContext(TeamCharacterContext)
   const [rotation, setRotation] = useState(() => load(teamId))
   const [duration, setDuration] = useState(90)
   const [iterations, setIterations] = useState(1000)
@@ -65,7 +64,7 @@ export default function TabGcsim() {
     <CardThemed bgt="light">
       <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
         <Typography sx={{ fontWeight: 'bold' }}>
-          Xuất sang gcsim (tính DPS cả đội)
+          DPS check – tính DPS cả đội bằng gcsim
         </Typography>
         <Typography variant="caption" color="text.secondary">
           Ghi rotation theo thứ tự nhân vật trong đội. Ký hiệu: E = skill, Q =

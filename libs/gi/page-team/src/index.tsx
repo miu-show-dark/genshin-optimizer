@@ -48,6 +48,7 @@ import {
 import type { BuildTcContexObj, SetBuildTcAction } from './BuildTcContext'
 import { BuildTcContext } from './BuildTcContext'
 import Content from './CharacterDisplay/Content'
+import TabGcsim from './MyTools/TabGcsim' // MyTools
 import TeamCharacterSelector from './TeamCharacterSelector'
 import TeamSetting from './TeamSetting'
 
@@ -115,8 +116,9 @@ function Page({ teamId }: { teamId: string }) {
     window.scrollTo({ top: 0 })
   }, [])
   useEffect(() => {
-    if (!loadoutDatum) navigate('', { replace: true })
-  }, [loadoutDatum, navigate])
+    if (!loadoutDatum && characterKeyRaw !== 'dps')
+      navigate('', { replace: true }) // MyTools: 'dps' là tab cấp đội
+  }, [loadoutDatum, navigate, characterKeyRaw])
 
   const teamCharId = loadoutDatum?.teamCharId
   const characterKey = database.teamChars.get(teamCharId)?.key
@@ -184,6 +186,7 @@ function Page({ teamId }: { teamId: string }) {
           teamId={teamId}
           characterKey={characterKey}
           tab={tab}
+          dps={characterKeyRaw === 'dps'} // MyTools
         />
         <Box
           sx={(theme) => {
@@ -217,6 +220,10 @@ function Page({ teamId }: { teamId: string }) {
             ) : (
               fallback
             )
+          ) : characterKeyRaw === 'dps' ? (
+            <Box sx={{ p: 1 }}>
+              <TabGcsim teamId={teamId} />
+            </Box>
           ) : (
             <TeamSetting teamId={teamId} teamData={teamData} />
           )}
