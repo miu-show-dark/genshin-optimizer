@@ -47,6 +47,10 @@ export type GcsimOptions = {
   duration: number
   iterations: number
   enemyResist: number
+  /** Năng lượng nền nhận thêm: mỗi [min,max] giây nhận `energyAmount` */
+  energyAmount: number
+  energyMinSec: number
+  energyMaxSec: number
   /** Lặp rotation đến hết thời gian mô phỏng */
   loop: boolean
 }
@@ -148,7 +152,10 @@ export function buildGcsimScript(
   out.push(
     `target lvl=${team.enemyOverride.enemyLevel ?? 100} resist=${opts.enemyResist} pos=0,0;`
   )
-  out.push('energy every interval=480,720 amount=1;', '')
+  out.push(
+    `energy every interval=${Math.round(opts.energyMinSec * 60)},${Math.round(opts.energyMaxSec * 60)} amount=${opts.energyAmount};`,
+    ''
+  )
   for (const datum of team.loadoutData) {
     if (!datum) continue
     const teamChar = database.teamChars.get(datum.teamCharId)

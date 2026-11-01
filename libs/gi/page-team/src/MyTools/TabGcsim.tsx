@@ -32,6 +32,9 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
   const [iterations, setIterations] = useState(1000)
   const [resist, setResist] = useState(0.1)
   const [loop, setLoop] = useState(true)
+  const [energyAmount, setEnergyAmount] = useState(1)
+  const [energyMin, setEnergyMin] = useState(8)
+  const [energyMax, setEnergyMax] = useState(12)
   const [copied, setCopied] = useState(false)
 
   const { script, warnings } = useMemo(
@@ -41,9 +44,23 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
         duration,
         iterations,
         enemyResist: resist,
+        energyAmount,
+        energyMinSec: energyMin,
+        energyMaxSec: Math.max(energyMin, energyMax),
         loop,
       }),
-    [database, teamId, rotation, duration, iterations, resist, loop]
+    [
+      database,
+      teamId,
+      rotation,
+      duration,
+      iterations,
+      resist,
+      loop,
+      energyAmount,
+      energyMin,
+      energyMax,
+    ]
   )
 
   const onRotation = (v: string) => {
@@ -106,6 +123,30 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
             onChange={(e) => setResist(Number(e.target.value))}
             inputProps={{ step: 0.05 }}
             sx={{ width: 190 }}
+          />
+          <TextField
+            size="small"
+            type="number"
+            label="Năng lượng nền nhận mỗi lần"
+            value={energyAmount}
+            onChange={(e) => setEnergyAmount(Number(e.target.value) || 1)}
+            sx={{ width: 220 }}
+          />
+          <TextField
+            size="small"
+            type="number"
+            label="Mỗi từ (giây)"
+            value={energyMin}
+            onChange={(e) => setEnergyMin(Number(e.target.value) || 1)}
+            sx={{ width: 130 }}
+          />
+          <TextField
+            size="small"
+            type="number"
+            label="đến (giây)"
+            value={energyMax}
+            onChange={(e) => setEnergyMax(Number(e.target.value) || 1)}
+            sx={{ width: 130 }}
           />
           <FormControlLabel
             control={
