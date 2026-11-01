@@ -1,0 +1,119 @@
+# MyTools – Tự đồng bộ cập nhật từ Genshin Optimizer gốc và đăng lên GitHub Pages.
+#
+# - Mỗi ngày (03:17 giờ Việt Nam) hoặc khi bấm "Run workflow": gộp nhánh master
+#   của frzyc/genshin-optimizer vào bản fork, sau đó build và deploy.
+# - Mỗi lần bạn push code lên master: build và deploy ngay.
+# - Nếu gộp bị xung đột (GO sửa đúng chỗ bạn sửa), workflow báo lỗi và KHÔNG
+#   đẩy gì lên; bạn gộp tay theo hướng dẫn trong libs/gi/page-team/src/MyTools/README.md.
+#
+# Cài đặt một lần (xem README):
+#   1. Settings -> Pages -> Source: "GitHub Actions".
+#   2. (Khuyên dùng) Tạo fine-grained token có quyền Contents + Workflows
+#      (Read and write) cho riêng repo này, lưu thành secret tên SYNC_TOKEN.
+#      Thiếu token thì vẫn chạy, nhưng sẽ lỗi vào những ngày GO gốc sửa thư mục
+#      .github/workflows (GITHUB_TOKEN mặc định không được phép đẩy file workflow).
+name: MyTools - Sync GO & Deploy
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '17 20 * * *' # 20:17 UTC = 03:17 giờ Việt Nam
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: mytools-sync-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Không chạy trên repo gốc, và bỏ qua lần push do chính bước đồng bộ tạo ra
+    # (bước đồng bộ đã tự build ngay sau khi gộp).
+    if: >-
+      github.repository != 'frzyc/genshin-optimizer' &&
+      !(github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[sync-upstream]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Lấy đủ lịch sử commit (nhưng không tải nội dung file cũ) để merge được
+          fetch-depth: 0
+          filter: blob:none
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Gộp cập nhật từ GO gốc
+        id: sync
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/frzyc/genshin-optimizer.git
+          git fetch --filter=blob:none upstream master
+          BEFORE=$(git rev-parse HEAD)
+          if ! git merge --no-edit -m "chore: đồng bộ GO gốc [sync-upstream]" upstream/master; then
+            git merge --abort || true
+            echo "::error::Xung đột khi gộp cập nhật từ GO gốc. Hãy gộp tay (xem MyTools/README.md, mục Xử lý xung đột)."
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$BEFORE" ]; then
+            git push origin HEAD:master
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Đã là bản mới nhất, không có gì để gộp."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Quyết định có build/deploy không
+        id: decide
+        run: |
+          # Lịch hằng ngày mà GO gốc không có gì mới thì bỏ qua cho đỡ tốn thời gian
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ steps.sync.outputs.changed }}" != "true" ]; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v6
+        if: steps.decide.outputs.deploy == 'true'
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'yarn'
+
+      - name: Cài thư viện
+        if: steps.decide.outputs.deploy == 'true'
+        run: yarn install --immutable
+        env:
+          CYPRESS_INSTALL_BINARY: '0' # không cần Cypress để build web
+
+      - name: Build Genshin Optimizer (bản của bạn)
+        if: steps.decide.outputs.deploy == 'true'
+        run: yarn run nx run frontend:build:production
+        env:
+          NX_DAEMON: false
+          NX_URL_GITHUB_GO_CURRENT_VERSION: 'https://github.com/${{ github.repository }}/commit/${{ github.sha }}'
+
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.decide.outputs.deploy == 'true'
+        with:
+          path: dist/apps/frontend
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
