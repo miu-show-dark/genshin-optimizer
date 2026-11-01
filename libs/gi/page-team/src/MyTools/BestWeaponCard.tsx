@@ -3,26 +3,24 @@
  * Chạy tối ưu thánh di vật cho TỪNG vũ khí ứng viên (cùng mục tiêu, bộ lọc,
  * kho thánh di vật với nút Generate) rồi xếp hạng vũ khí theo build tốt nhất.
  */
+
+import { useDataManagerValues } from '@genshin-optimizer/common/database-ui'
 import { CardThemed, ImgIcon } from '@genshin-optimizer/common/ui'
 import { weaponAsset } from '@genshin-optimizer/gi/assets'
-import type { RarityKey, RefinementKey } from '@genshin-optimizer/gi/consts'
 import type { ICachedArtifact, OptConfig } from '@genshin-optimizer/gi/db'
 import {
   TeamCharacterContext,
   useDatabase,
   useDBMeta,
 } from '@genshin-optimizer/gi/db-ui'
+import { getCharStat, getWeaponStat } from '@genshin-optimizer/gi/stats'
 import { DataContext, useNumWorkers } from '@genshin-optimizer/gi/ui'
 import {
   Alert,
   Box,
   Button,
   CardContent,
-  FormControl,
-  InputLabel,
   LinearProgress,
-  MenuItem,
-  Select,
   Table,
   TableBody,
   TableCell,
@@ -35,18 +33,10 @@ import { useTranslation } from 'react-i18next'
 import type { BestWeaponProgress, BestWeaponRow } from './bestWeapon'
 import { runBestWeaponSearch } from './bestWeapon'
 import { formatPct, formatValue } from './format'
-import { listCandidateWeapons } from './weaponCompare'
 import {
   listWeaponConditions,
   loadWeaponCondOverrides,
 } from './weaponConditions'
-
-type RarityMode = 'only4' | 'only5' | 'min4'
-const rarityRange: Record<RarityMode, [RarityKey, RarityKey]> = {
-  only4: [4, 4],
-  only5: [5, 5],
-  min4: [4, 5],
-}
 
 export default function BestWeaponCard({
   optConfig,
@@ -68,8 +58,6 @@ export default function BestWeaponCard({
   const [maxWorkers] = useNumWorkers()
   const characterKey = teamChar.key
 
-  const [refinement, setRefinement] = useState<RefinementKey>(1)
-  const [rarityMode, setRarityMode] = useState<RarityMode>('only4')
   const [rows, setRows] = useState<BestWeaponRow[]>([])
   const [progress, setProgress] = useState<BestWeaponProgress>()
   const [running, setRunning] = useState(false)
@@ -77,10 +65,14 @@ export default function BestWeaponCard({
   const cancelSolver = useRef<() => void>(() => {})
 
   const equippedWeapon = database.teams.getLoadoutWeapon(loadoutDatum)
-  const candidates = useMemo(() => {
-    const [min, max] = rarityRange[rarityMode]
-    return listCandidateWeapons(characterKey, min, max)
-  }, [characterKey, rarityMode])
+  // Vũ khí THẬT trong kho của bạn, cùng loại với nhân vật
+  const allWeapons = useDataManagerValues(database.weapons)
+  const weaponType = getCharStat(characterKey).weaponType
+  const candidates = useMemo(
+    () =>
+      allWeapons.filter((w) => getWeaponStat(w.key)?.weaponType === weaponType),
+    [allWeapons, weaponType]
+  )
 
   const canRun = !!optConfig.optimizationTarget?.length && !disabled
 
@@ -96,10 +88,8 @@ export default function BestWeaponCard({
         teamCharId,
         gender,
         characterKey,
-        equippedWeaponKey: equippedWeapon?.key,
-        equippedWeapon,
-        weaponKeys: candidates,
-        refinement,
+        equippedWeaponId: equippedWeapon?.id,
+        weapons: candidates,
         optConfig,
         arts: getArts(optConfig),
         maxWorkers,
@@ -138,40 +128,12 @@ export default function BestWeaponCard({
           Vũ khí tốt nhất (tối ưu thánh di vật cho từng vũ khí)
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Với mỗi vũ khí, chạy tối ưu thánh di vật đầy đủ theo mục tiêu, bộ lọc
-          và kho thánh di vật ở trên rồi xếp hạng. Vũ khí đang cầm được tính
-          theo đúng cấp/tinh luyện thật làm mốc; các vũ khí khác giả lập ở cấp
-          tối đa. Điều kiện passive lấy từ tab So vũ khí (nếu bạn đã chọn).
+          Thử TỪNG vũ khí bạn đang có trong kho (đúng cấp, tinh luyện thật), mỗi
+          cái chạy tối ưu thánh di vật đầy đủ theo mục tiêu, bộ lọc và kho thánh
+          di vật ở trên, rồi xếp hạng. Vũ khí đang cầm là mốc so sánh. Điều kiện
+          passive lấy từ tab So vũ khí (nếu bạn đã chọn).
         </Typography>
         <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel>Độ hiếm</InputLabel>
-            <Select
-              label="Độ hiếm"
-              value={rarityMode}
-              disabled={running}
-              onChange={(e) => setRarityMode(e.target.value as RarityMode)}
-            >
-              <MenuItem value="only4">Chỉ 4★</MenuItem>
-              <MenuItem value="only5">Chỉ 5★</MenuItem>
-              <MenuItem value="min4">4★ + 5★</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 110 }}>
-            <InputLabel>Tinh luyện</InputLabel>
-            <Select
-              label="Tinh luyện"
-              value={refinement}
-              disabled={running}
-              onChange={(e) => setRefinement(e.target.value as RefinementKey)}
-            >
-              {([1, 2, 3, 4, 5] as RefinementKey[]).map((r) => (
-                <MenuItem key={r} value={r}>
-                  R{r}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
           <Button
             variant="contained"
             color={running ? 'error' : 'success'}
@@ -180,7 +142,7 @@ export default function BestWeaponCard({
           >
             {running
               ? 'Dừng'
-              : `Tìm vũ khí tốt nhất (${candidates.length + 1} vũ khí)`}
+              : `Tìm vũ khí tốt nhất (${candidates.length} vũ khí của bạn)`}
           </Button>
         </Box>
         {!optConfig.optimizationTarget?.length && (
@@ -213,7 +175,7 @@ export default function BestWeaponCard({
             </TableHead>
             <TableBody>
               {rows.map((row, i) => (
-                <TableRow key={row.weaponKey} selected={row.isEquipped}>
+                <TableRow key={row.weaponId} selected={row.isEquipped}>
                   <TableCell>{i + 1}</TableCell>
                   <TableCell>
                     <Box display="flex" alignItems="center" gap={1}>
@@ -221,8 +183,13 @@ export default function BestWeaponCard({
                         size={2}
                         src={weaponAsset(row.weaponKey, true)}
                       />
-                      {t(`weaponNames_gen:${row.weaponKey}`)} R{row.refinement}
-                      {row.isEquipped && ' (đang cầm)'}
+                      {t(`weaponNames_gen:${row.weaponKey}`)} Lv.{row.level} R
+                      {row.refinement}
+                      {row.isEquipped
+                        ? ' (đang cầm)'
+                        : row.location
+                          ? ` (${row.location})`
+                          : ''}
                     </Box>
                   </TableCell>
                   <TableCell align="right">{formatValue(row.value)}</TableCell>

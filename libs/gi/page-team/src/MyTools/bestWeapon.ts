@@ -16,7 +16,10 @@ import type {
   RefinementKey,
   WeaponKey,
 } from '@genshin-optimizer/gi/consts'
-import { allArtifactSlotKeys } from '@genshin-optimizer/gi/consts'
+import {
+  allArtifactSlotKeys,
+  charKeyToLocCharKey,
+} from '@genshin-optimizer/gi/consts'
 import type {
   ArtCharDatabase,
   ICachedArtifact,
@@ -35,12 +38,16 @@ import {
   mergeData,
   optimize,
 } from '@genshin-optimizer/gi/wr'
-import { makeVirtualWeapon } from './weaponCompare'
 import type { WeaponCondDef, WeaponCondValues } from './weaponConditions'
 
 export type BestWeaponRow = {
   weaponKey: WeaponKey
+  /** id vũ khí trong database của bạn */
+  weaponId: string
+  level: number
   refinement: RefinementKey
+  /** Nhân vật đang cầm vũ khí này ('' = không ai) */
+  location: string
   /** Giá trị mục tiêu của build tốt nhất với vũ khí này (undefined = không có build hợp lệ) */
   value: number | undefined
   artifactIds: Partial<Record<(typeof allArtifactSlotKeys)[number], string>>
@@ -165,7 +172,7 @@ async function solveOne(opts: {
 
 /**
  * Tìm vũ khí tốt nhất: với mỗi vũ khí chạy tối ưu thánh di vật đầy đủ.
- * Vũ khí đang cầm luôn được tính đầu tiên (đúng cấp/tinh luyện thật) làm mốc.
+ * Chỉ dùng vũ khí thật trong kho của bạn, giữ nguyên cấp/tinh luyện.
  */
 export async function runBestWeaponSearch(opts: {
   database: ArtCharDatabase
@@ -173,10 +180,10 @@ export async function runBestWeaponSearch(opts: {
   teamCharId: string
   gender: GenderKey
   characterKey: CharacterKey
-  equippedWeaponKey: WeaponKey | undefined
-  equippedWeapon: ICachedWeapon | undefined
-  weaponKeys: WeaponKey[]
-  refinement: RefinementKey
+  /** id vũ khí đang cầm của loadout (làm mốc) */
+  equippedWeaponId: string | undefined
+  /** Vũ khí THẬT của bạn để thử (đúng cấp, tinh luyện) */
+  weapons: ICachedWeapon[]
   optConfig: OptConfig
   arts: ICachedArtifact[]
   maxWorkers: number
@@ -190,24 +197,21 @@ export async function runBestWeaponSearch(opts: {
   isCancelled: () => boolean
 }): Promise<BestWeaponRow[]> {
   const rows: BestWeaponRow[] = []
-  const list: Array<{
-    wk: WeaponKey
-    weapon: ICachedWeapon | undefined
-    equipped: boolean
-  }> = []
-  if (opts.equippedWeapon && opts.equippedWeaponKey)
-    list.push({ wk: opts.equippedWeaponKey, weapon: undefined, equipped: true })
-  for (const wk of opts.weaponKeys) {
-    if (wk === opts.equippedWeaponKey && list[0]?.equipped) continue
-    list.push({
-      wk,
-      weapon: makeVirtualWeapon(wk, opts.characterKey, opts.refinement),
-      equipped: false,
-    })
-  }
+  const list = opts.weapons.map((real) => {
+    const equipped = real.id === opts.equippedWeaponId
+    return {
+      wk: real.key,
+      real,
+      equipped,
+      // Vũ khí đang cầm: tính như bình thường. Còn lại: giả lập nhân vật cầm nó.
+      weapon: equipped
+        ? undefined
+        : { ...real, location: charKeyToLocCharKey(opts.characterKey) },
+    }
+  })
   for (let i = 0; i < list.length; i++) {
     if (opts.isCancelled()) break
-    const { wk, weapon, equipped } = list[i]
+    const { wk, weapon, equipped, real } = list[i]
     opts.onProgress?.({ done: i, total: list.length, current: wk })
     const workerData = workerDataFor(
       opts.database,
@@ -238,7 +242,10 @@ export async function runBestWeaponSearch(opts: {
     }
     const row: BestWeaponRow = {
       weaponKey: wk,
-      refinement: weapon?.refinement ?? opts.equippedWeapon?.refinement ?? 1,
+      weaponId: real.id,
+      level: real.level,
+      refinement: real.refinement,
+      location: real.location,
       value: res?.value,
       artifactIds: res?.artifactIds ?? {},
       isEquipped: equipped,

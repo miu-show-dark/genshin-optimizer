@@ -62,4 +62,4 @@ git add . && git commit && git push
 ## Vũ khí tốt nhất (tab Optimize)
 
 - `BestWeaponCard.tsx` + `bestWeapon.ts`: thẻ nằm dưới nút Generate trong tab Optimize (hook 1 dòng ở `TabOptimize/index.tsx`, đánh dấu `// MyTools`).
-- Với mỗi vũ khí ứng viên, chạy `GOSolver` đầy đủ (cùng mục tiêu, bộ lọc chỉ số, kho thánh di vật) rồi xếp hạng theo build tốt nhất. Vũ khí đang cầm dùng đúng cấp/tinh luyện thật làm mốc.
+- Với mỗi vũ khí THẬT trong kho của bạn (đúng cấp, tinh luyện), chạy `GOSolver` đầy đủ (cùng mục tiêu, bộ lọc chỉ số, kho thánh di vật) rồi xếp hạng theo build tốt nhất. Vũ khí đang cầm dùng đúng cấp/tinh luyện thật làm mốc.
