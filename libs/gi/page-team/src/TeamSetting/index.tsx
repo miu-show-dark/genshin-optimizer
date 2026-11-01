@@ -34,7 +34,6 @@ import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import BuildDropdown from '../BuildDropdown'
 import { LoadoutDropdown } from '../LoadoutDropdown'
-import TeamRotationCard from '../MyTools/TeamRotationCard' // MyTools
 import { ResonanceDisplay } from './ResonanceDisplay'
 import { TeammateDisplay } from './TeamComponents'
 import TeamExportModal from './TeamExportModal'
@@ -104,8 +103,6 @@ export default function TeamSetting({
       </Box>
       <EnemyExpandCard teamId={teamId} />
       <TeamEditor teamId={teamId} teamData={teamData} />
-      {/* MyTools */}
-      {!noChars && <TeamRotationCard teamId={teamId} teamData={teamData} />}
     </CardContent>
   )
 }

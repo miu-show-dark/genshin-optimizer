@@ -105,6 +105,7 @@ import {
   useState,
 } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import BestWeaponCard from '../../../MyTools/BestWeaponCard' // MyTools
 import useCompareData from '../../../useCompareData'
 import CompareBtn from '../../CompareBtn'
 import { CustomMultiTargetButton } from '../../CustomMultiTarget/CustomMultiTargetButton'
@@ -779,6 +780,12 @@ export default function TabBuild() {
         </BootstrapTooltip>
       </ButtonGroup>
       <ScalesWith />
+      {/* MyTools: vũ khí tốt nhất */}
+      <BestWeaponCard
+        optConfig={buildSetting}
+        getArts={getFilteredArts}
+        disabled={generatingBuilds}
+      />
       {!!characterKey && (
         <BuildAlert
           {...{ status: buildStatus, characterName, maxBuildsToShow }}

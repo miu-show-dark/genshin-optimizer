@@ -6,7 +6,6 @@ Toàn bộ tính năng tự thêm nằm trong thư mục này. Code gốc của 
 | File gốc của GO | Sửa gì |
 |---|---|
 | `libs/gi/page-team/src/CharacterDisplay/Content.tsx` | Thêm tab **"So vũ khí"** (1 route + 1 tab + 2 dòng import) |
-| `libs/gi/page-team/src/TeamSetting/index.tsx` | Thêm thẻ **"Rotation team"** dưới phần chọn đội hình |
 
 Mọi thứ khác là file mới, nên khi gộp cập nhật từ GO gốc gần như không bao giờ xung đột.
 
@@ -16,8 +15,6 @@ Mọi thứ khác là file mới, nên khi gộp cập nhật từ GO gốc gầ
 |---|---|
 | `weaponCompare.ts` | Logic so vũ khí: liệt kê vũ khí cùng loại, tạo vũ khí "ảo" cấp tối đa, gọi `getTeamDataCalc(..., overrideWeapon)` của GO để tính, bật điều kiện passive tối đa |
 | `TabWeaponCompare.tsx` | Giao diện tab "So vũ khí" |
-| `teamRotation.ts` | Logic rotation: lấy giá trị Custom Multi Target của từng nhân vật, cộng lại, chia thời gian vòng; lưu lựa chọn vào `localStorage` (khóa `mytools_rotation_<teamId>`) |
-| `TeamRotationCard.tsx` | Giao diện thẻ "Rotation team" |
 | `format.ts` | Hàm định dạng số dùng chung |
 
 ## Chạy trên máy của bạn
@@ -60,5 +57,9 @@ git add . && git commit && git push
 
 - **Tối ưu thánh di vật theo từng vũ khí:** hiện tab "So vũ khí" giữ nguyên thánh di vật đang mặc.
   Có thể gọi solver của GO (xem `CharacterDisplay/Tabs/TabOptimize`) cho top 3–5 vũ khí.
-- **Thời gian buff thực tế:** thêm hệ số uptime cho từng dòng trong rotation thay vì coi buff luôn bật.
 - **Xuất cấu hình gcsim:** dựng file config gcsim từ team/loadout để mô phỏng chi tiết theo thời gian.
+
+## Vũ khí tốt nhất (tab Optimize)
+
+- `BestWeaponCard.tsx` + `bestWeapon.ts`: thẻ nằm dưới nút Generate trong tab Optimize (hook 1 dòng ở `TabOptimize/index.tsx`, đánh dấu `// MyTools`).
+- Với mỗi vũ khí ứng viên, chạy `GOSolver` đầy đủ (cùng mục tiêu, bộ lọc chỉ số, kho thánh di vật) rồi xếp hạng theo build tốt nhất. Vũ khí đang cầm dùng đúng cấp/tinh luyện thật làm mốc.
