@@ -32,6 +32,7 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
   const [iterations, setIterations] = useState(1000)
   const [resist, setResist] = useState(0.1)
   const [loop, setLoop] = useState(true)
+  const [fullEnergy, setFullEnergy] = useState(false)
   const [energyAmount, setEnergyAmount] = useState(1)
   const [energyMin, setEnergyMin] = useState(8)
   const [energyMax, setEnergyMax] = useState(12)
@@ -44,6 +45,7 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
         duration,
         iterations,
         enemyResist: resist,
+        alwaysFullEnergy: fullEnergy,
         energyAmount,
         energyMinSec: energyMin,
         energyMaxSec: Math.max(energyMin, energyMax),
@@ -57,6 +59,7 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
       iterations,
       resist,
       loop,
+      fullEnergy,
       energyAmount,
       energyMin,
       energyMax,
@@ -123,6 +126,15 @@ export default function TabGcsim({ teamId }: { teamId: string }) {
             onChange={(e) => setResist(Number(e.target.value))}
             inputProps={{ step: 0.05 }}
             sx={{ width: 190 }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={fullEnergy}
+                onChange={(e) => setFullEnergy(e.target.checked)}
+              />
+            }
+            label="Luôn đủ năng lượng (burst dùng được bất cứ lúc nào)"
           />
           <TextField
             size="small"

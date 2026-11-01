@@ -51,6 +51,8 @@ export type GcsimOptions = {
   energyAmount: number
   energyMinSec: number
   energyMaxSec: number
+  /** Luôn đủ năng lượng cho burst (nhận rất nhiều năng lượng mỗi giây) */
+  alwaysFullEnergy: boolean
   /** Lặp rotation đến hết thời gian mô phỏng */
   loop: boolean
 }
@@ -152,10 +154,13 @@ export function buildGcsimScript(
   out.push(
     `target lvl=${team.enemyOverride.enemyLevel ?? 100} resist=${opts.enemyResist} pos=0,0;`
   )
-  out.push(
-    `energy every interval=${Math.round(opts.energyMinSec * 60)},${Math.round(opts.energyMaxSec * 60)} amount=${opts.energyAmount};`,
-    ''
-  )
+  if (opts.alwaysFullEnergy)
+    out.push('energy every interval=60,60 amount=100; # luôn đủ năng lượng')
+  else
+    out.push(
+      `energy every interval=${Math.round(opts.energyMinSec * 60)},${Math.round(opts.energyMaxSec * 60)} amount=${opts.energyAmount};`,
+      ''
+    )
   for (const datum of team.loadoutData) {
     if (!datum) continue
     const teamChar = database.teamChars.get(datum.teamCharId)
