@@ -160,6 +160,14 @@ export function buildGcsimScript(
       )
     }
     const name = gcsimChar(teamChar.key)
+    if (teamChar.key.startsWith('Traveler'))
+      warnings.push(
+        `${teamChar.key}: tên Traveler trong gcsim có thể khác (aether/lumine); nếu gcsim báo lỗi, sửa tên "${name}" trong script`
+      )
+    if (char.level > 90)
+      warnings.push(
+        `${teamChar.key}: cấp ${char.level} vượt 90, script dùng 90 (gcsim chỉ hỗ trợ tối đa 90)`
+      )
     names.push(name)
     const weapon = database.teams.getLoadoutWeapon(datum)
     const arts = (
@@ -168,7 +176,7 @@ export function buildGcsimScript(
       >
     ).filter((a): a is ICachedArtifact => !!a)
     out.push(
-      `${name} char lvl=${char.level}/${ascensionMaxLevel[char.ascension]} cons=${char.constellation} talent=${char.talent.auto},${char.talent.skill},${char.talent.burst};`
+      `${name} char lvl=${Math.min(char.level, 90)}/${ascensionMaxLevel[char.ascension]} cons=${char.constellation} talent=${char.talent.auto},${char.talent.skill},${char.talent.burst};`
     )
     out.push(
       `${name} add weapon="${weapon.key.toLowerCase()}" refine=${weapon.refinement} lvl=${weapon.level}/${ascensionMaxLevel[weapon.ascension]};`
