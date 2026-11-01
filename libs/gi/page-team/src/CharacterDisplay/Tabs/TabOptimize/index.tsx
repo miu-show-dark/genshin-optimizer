@@ -106,6 +106,12 @@ import {
 } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import BestWeaponCard from '../../../MyTools/BestWeaponCard' // MyTools
+import type { BestWeaponOptions } from '../../../MyTools/bestWeaponGenerate' // MyTools
+import {
+  generateBestWeaponBuilds,
+  loadBestWeaponOptions,
+  saveBestWeaponOptions,
+} from '../../../MyTools/bestWeaponGenerate' // MyTools
 import useCompareData from '../../../useCompareData'
 import CompareBtn from '../../CompareBtn'
 import { CustomMultiTargetButton } from '../../CustomMultiTarget/CustomMultiTargetButton'
@@ -154,6 +160,17 @@ export default function TabBuild() {
   const notificationRef = useRef(notification)
   notificationRef.current = notification
 
+  // MyTools: tùy chọn tìm cả vũ khí khi bấm Tạo Build
+  const [weaponOpts, setWeaponOptsState] = useState<BestWeaponOptions>(() =>
+    loadBestWeaponOptions(teamCharId)
+  )
+  const setWeaponOpts = useCallback(
+    (o: BestWeaponOptions) => {
+      setWeaponOptsState(o)
+      saveBestWeaponOptions(teamCharId, o)
+    },
+    [teamCharId]
+  )
   const [buildStatus, setBuildStatus] = useState(() => initBuildStatus())
   const generatingBuilds = buildStatus.type !== 'inactive'
 
@@ -321,6 +338,60 @@ export default function TabBuild() {
     } = buildSetting
     if (!characterKey || !optimizationTarget) return
     if (notificationRef.current) Notification?.requestPermission()
+
+    // MyTools: tìm cả vũ khí tốt nhất cùng thánh di vật
+    if (weaponOpts.enabled) {
+      const wStatus: Omit<BuildStatus, 'type'> = {
+        tested: 0,
+        failed: 0,
+        skipped: 0,
+        total: 0,
+        testedPerSecond: 0,
+        skippedPerSecond: 0,
+        startTime: performance.now(),
+      }
+      const wTimer = setInterval(
+        () => setBuildStatus({ type: 'active', ...wStatus }),
+        100
+      )
+      let stopped = false
+      let cancelSolver = () => {}
+      cancelToken.current = () => {
+        stopped = true
+        cancelSolver()
+      }
+      setChartData(undefined)
+      try {
+        await generateBestWeaponBuilds({
+          database,
+          teamId,
+          teamCharId,
+          optConfigId,
+          gender,
+          characterKey,
+          equippedWeaponId: database.teams.getLoadoutWeapon(loadoutDatum).id,
+          optConfig: buildSetting,
+          arts: getFilteredArts(buildSetting),
+          maxWorkers,
+          data,
+          includeOthers: weaponOpts.includeOthers,
+          status: wStatus,
+          registerCancel: (c) => (cancelSolver = c),
+          isCancelled: () => stopped,
+        })
+      } catch (e) {
+        if (e instanceof Error) throwGlobalError(e)
+      } finally {
+        clearInterval(wTimer)
+        cancelToken.current = () => {}
+        setBuildStatus({
+          type: 'inactive',
+          ...wStatus,
+          finishTime: performance.now(),
+        })
+      }
+      return
+    }
 
     // Filter with the latest settings rather than the deferred `filteredArts`,
     // so that a build started right after a settings change does not use an
@@ -513,6 +584,8 @@ export default function TabBuild() {
     optConfigId,
     t,
     throwGlobalError,
+    weaponOpts,
+    data,
   ])
 
   const characterName = (
@@ -782,8 +855,8 @@ export default function TabBuild() {
       <ScalesWith />
       {/* MyTools: vũ khí tốt nhất */}
       <BestWeaponCard
-        optConfig={buildSetting}
-        getArts={getFilteredArts}
+        options={weaponOpts}
+        setOptions={setWeaponOpts}
         disabled={generatingBuilds}
       />
       {!!characterKey && (
