@@ -57,13 +57,8 @@ git add . && git commit && git push
 
 - **Tối ưu thánh di vật theo từng vũ khí:** hiện tab "So vũ khí" giữ nguyên thánh di vật đang mặc.
   Có thể gọi solver của GO (xem `CharacterDisplay/Tabs/TabOptimize`) cho top 3–5 vũ khí.
-- **Xuất cấu hình gcsim:** dựng file config gcsim từ team/loadout để mô phỏng chi tiết theo thời gian.
 
 ## Vũ khí tốt nhất (tab Optimize)
 
 - `BestWeaponCard.tsx` + `bestWeapon.ts`: thẻ nằm dưới nút Generate trong tab Optimize (hook 1 dòng ở `TabOptimize/index.tsx`, đánh dấu `// MyTools`).
 - Với mỗi vũ khí THẬT trong kho của bạn (đúng cấp, tinh luyện), chạy `GOSolver` đầy đủ (cùng mục tiêu, bộ lọc chỉ số, kho thánh di vật) rồi xếp hạng theo build tốt nhất. Vũ khí đang cầm dùng đúng cấp/tinh luyện thật làm mốc.
-
-## Tab DPS check (gcsim)
-
-- `TabGcsim.tsx` + `gcsimExport.ts`: tab "DPS check" cấp đội, nằm cạnh Team Settings và các nhân vật. Lấy đội hiện tại (nhân vật, cấp, cung mệnh, talent, vũ khí, thánh di vật đang mặc), ghép với rotation ghi tắt (E, Q, N, C, NC, Swap Char 2...) thành script cho https://gcsim.app. Hook trong `index.tsx` và `TeamCharacterSelector.tsx` (đánh dấu `// MyTools`).

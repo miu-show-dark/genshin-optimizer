@@ -14,7 +14,6 @@ import BorderColorIcon from '@mui/icons-material/BorderColor'
 import CloseIcon from '@mui/icons-material/Close'
 import GroupsIcon from '@mui/icons-material/Groups'
 import PersonIcon from '@mui/icons-material/Person'
-import SpeedIcon from '@mui/icons-material/Speed' // MyTools
 import {
   Box,
   Button,
@@ -33,12 +32,10 @@ export default function TeamCharacterSelector({
   teamId,
   characterKey,
   tab = '',
-  dps = false, // MyTools
 }: {
   teamId: string
   characterKey?: CharacterKey
   tab?: string
-  dps?: boolean // MyTools: tab "DPS check" cấp đội
 }) {
   const { t } = useTranslation('page_team')
   const navigate = useNavigate()
@@ -157,7 +154,7 @@ export default function TeamCharacterSelector({
       </BootstrapTooltip>
       <Tabs
         variant="fullWidth"
-        value={dps ? 'dps' : (characterKey ?? 'team')}
+        value={characterKey ?? 'team'}
         sx={{
           minHeight: 0,
           '& .MuiTab-root': {
@@ -221,15 +218,6 @@ export default function TeamCharacterSelector({
             />
           )
         })}
-        {/* MyTools */}
-        <Tab
-          icon={<SpeedIcon />}
-          iconPosition="start"
-          value="dps"
-          label="DPS check"
-          onClick={() => navigate(`/teams/${teamId}/dps`)}
-          sx={{ border: '1px solid rgba(255,255,255,0.3)' }}
-        />
       </Tabs>
     </Box>
   )
